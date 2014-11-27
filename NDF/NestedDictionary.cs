@@ -7,20 +7,20 @@ namespace NDF
 	/// <summary>
 	/// Represents a nested dictionary, mapping string keys to CNestedDictionaryNode values.
 	/// </summary>
-	public class CNestedDictionary : Dictionary<String, CNestedDictionaryNode>
+	public class NestedDictionary : Dictionary<String, NestedDictionaryNode>
 	{
 		/// <summary>
 		/// Returns a clone of this nested dictionary and all its descendants.
 		/// </summary>
 		/// <returns>A clone of this nested dictionary and all its descendants.</returns>
-		public CNestedDictionary Clone()
+		public NestedDictionary Clone()
 		{
-			CNestedDictionary p_clone = new CNestedDictionary();
-			foreach (KeyValuePair<String, CNestedDictionaryNode> ndf_entry in this)
+			NestedDictionary clone = new NestedDictionary();
+			foreach (KeyValuePair<String, NestedDictionaryNode> ndfEntry in this)
 			{
-				p_clone.Add(ndf_entry.Key, ndf_entry.Value.Clone());
+				clone.Add(ndfEntry.Key, ndfEntry.Value.Clone());
 			}
-			return p_clone;
+			return clone;
 		}
 	}
 }

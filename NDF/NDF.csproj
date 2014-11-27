@@ -35,10 +35,10 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CNestedDictionary.cs" />
-    <Compile Include="CNestedDictionaryNode.cs" />
-    <Compile Include="CNestedDictionaryParser.cs" />
-    <Compile Include="ENestedDictionaryParseResult.cs" />
+    <Compile Include="NestedDictionary.cs" />
+    <Compile Include="NestedDictionaryNode.cs" />
+    <Compile Include="NestedDictionaryParser.cs" />
+    <Compile Include="NestedDictionaryParseResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

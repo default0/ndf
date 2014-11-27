@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("default0")]
 [assembly: AssemblyProduct("NDF")]
-[assembly: AssemblyCopyright("Open Source")]
+[assembly: AssemblyCopyright("Open Source (MIT License)")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace NDF
 {
-	internal enum ENestedDictionaryParseResult
+	internal enum NestedDictionaryParseResult
 	{
 		empty = 0,
 		no_value = 1,
