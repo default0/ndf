@@ -1,0 +1,81 @@
+// ndf has line-comments!
+// ndf works based off off a list of hashmaps.
+Key:Value; // you can define simple key-value pairs like this
+OtherKey; // the value part is optional...
+
+Key:OtherValue; // when ndf encounters a collision, it creates a completely new hashmap
+SomeThingComplex // you can nest further data in a key if you need to.
+{
+	Key:Value; // the same rules as outside the nesting apply here
+	OtherKey;
+	
+	Key:OtherValue;
+	SomeThingComplex
+	{
+		ReallyComplex
+		{
+			VeryComplex
+			{
+				WowSoComplex
+				{
+					// you can nest as far as you'd like to, however deep nesting usually makes ndf files harder to maintain and edit
+				}
+			}
+		}
+	}
+}
+
+// ndf features a post-processor that allows you to create nested dictionaries much easier.
+
+// writing this
+PostProcessor:@PP.Expand[10,25];
+Example:@PP.Expand[1,2];
+
+// is the same as writing this
+PostProcessor:10;
+Example:1;
+
+PostProcessor:10;
+Example:2;
+
+PostProcessor:25;
+Example:1;
+
+PostProcessor:25;
+Example:2;
+
+// often times, simple expansion doesn't get you too far though
+SomeValue:5;
+Complex
+{
+	Thing:blue;
+}
+
+SomeValue:5;
+Complex
+{
+	Thing:red;
+}
+
+SomeValue:5;
+Complex
+{
+	Thing:yellow;
+}
+
+// you cannot abbreviate this just using @PP.Expand, so @PP.Replace comes to rescue!
+// writing the following is the same as writing the former:
+@PP.Replace[Color]
+{
+	Color:@PP.Expand[blue,red,yellow];
+}
+SomeValue:5;
+Complex
+{
+	Thing:Color;
+}
+
+// ndf will automatically replace "Color" with whatever values defined in the nested dictionaries of @PP.Replace!
+// note however that you cannot spawn additional nested dictionaries using this technique
+// and no matter in which way you try to combine these techniques, it still remains redundant if you have dependencies within your data (fe Value must always be 10x as high as OtherValue)
+// proposals on how to fix these are welcome!
