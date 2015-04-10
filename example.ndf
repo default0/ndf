@@ -1,9 +1,9 @@
 // ndf has line-comments!
-// ndf works based off off a list of hashmaps.
+// ndf works based off off a list of key-value pairs.
 Key:Value; // you can define simple key-value pairs like this
 OtherKey; // the value part is optional...
 
-Key:OtherValue; // when ndf encounters a collision, it creates a completely new hashmap
+Key:OtherValue; // when ndf encounters the same key twice, it start a new list of key-value pairs.
 SomeThingComplex // you can nest further data in a key if you need to.
 {
 	Key:Value; // the same rules as outside the nesting apply here
