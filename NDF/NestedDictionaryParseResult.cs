@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace NDF
+﻿namespace FileFormats.NDF
 {
-	internal enum NestedDictionaryParseResult
-	{
-		empty,
-		no_value,
-		no_key,
-		success
-	}
+    internal enum NestedDictionaryParseResult
+    {
+        empty = 0,
+        no_value = 1,
+        no_key = 2,
+        success = 3
+    }
 }

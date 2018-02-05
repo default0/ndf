@@ -1,228 +1,305 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
-namespace NDF
+namespace FileFormats.NDF
 {
-	internal static class NestedDictionaryParser
-	{
-		private enum ParsingPosition
-		{
-			key,
-			value,
-			comment
-		}
+    internal static class NestedDictionaryParser
+    {
+        private enum EParsingPosition
+        {
+            key = 0,
+            value = 1
+        }
 
-		internal static List<NestedDictionary> ParseNDF(TextReader reader)
-		{
-			List<NestedDictionary> ndf = new List<NestedDictionary>();
+        internal static List<NestedDictionary> ParseNDF(TextReader p_reader)
+        {
+            List<NestedDictionary> p_ndf = new List<NestedDictionary>();
 
-			NestedDictionary currentDict = new NestedDictionary();
-			NestedDictionaryNode currentNode = new NestedDictionaryNode();
+            NestedDictionary p_current_dict = new NestedDictionary();
+            NestedDictionaryNode p_current_node = new NestedDictionaryNode();
 
-			ParsingPosition pos = ParsingPosition.key;
-			StringBuilder buffer = new StringBuilder();
-			while (reader.Peek() != -1)
-			{
-				switch (reader.Peek())
-				{
-						// check for comment
-					case (Int32)'/':
-						reader.Read();
-						if (reader.Peek() == (Int32)'/')
-						{
-							while (reader.Peek() != (Int32)'\n' && reader.Peek() != -1) // comment terminates at EOF or line-end
-							{
-								reader.Read();
-							}
-							reader.Read();
-						}
-						else
-						{
-							buffer.Append('/');
-						}
-						break;
-					case (Int32)':':
-						// : are allowed for values, just not for keys
-						if (pos == ParsingPosition.value)
-						{
-							goto default;
-						}
+            EParsingPosition pos = EParsingPosition.key;
+            bool is_escaped = false;
+            StringBuilder p_buffer = new StringBuilder();
+            while (p_reader.Peek() != -1)
+            {
+                if (is_escaped)
+                {
+                    p_buffer.Append((char)p_reader.Read()); // add to buffer for key or value
+                    continue;
+                }
+                switch (p_reader.Peek())
+                {
+                    // check for comment
+                    case (int)'/':
+                        p_reader.Read();
+                        if (p_reader.Peek() == (int)'/')
+                        {
+                            int peek_val;
+                            StringBuilder p_comment = new StringBuilder();
+                            do
+                            {
+                                p_reader.Read();
+                                peek_val = p_reader.Peek();
+                                p_comment.Append((char)peek_val);
+                            }
+                            while (peek_val != (int)'\n' && peek_val != -1); // comment terminates at EOF or line-end
+                            p_reader.Read();
+                        }
+                        else
+                        {
+                            p_buffer.Append('/');
+                        }
+                        break;
 
-						AddBuffer(currentNode, currentDict, pos, buffer); // merge the key with the node
-						
-						reader.Read(); // consume
-						pos = ParsingPosition.value;
+                    case (int)':':
+                        // : are allowed for values, just not for keys
+                        if (pos == EParsingPosition.value)
+                        {
+                            goto default;
+                        }
 
-						break;
-					case (Int32)';':
+                        AddBuffer(p_current_node, p_current_dict, pos, p_buffer); // merge the key with the node
 
-						AddBuffer(currentNode, currentDict, pos, buffer); // merge the value or the key with the node
-						
-						reader.Read(); // consume
-						pos = ParsingPosition.key;
+                        p_reader.Read(); // consume
+                        pos = EParsingPosition.value;
 
-						AddNode(ndf, ref currentDict, ref currentNode); // node end, so add the node
+                        break;
 
-						break;
-					case (Int32)'{':
+                    case (int)';':
 
-						buffer = new StringBuilder(buffer.ToString().TrimEnd('\r', '\n', '\t', '\0', ' '));
-						AddBuffer(currentNode, currentDict, pos, buffer); // merge the value or the key with the node
-						
-						reader.Read(); // consume before parsing the nested
-						currentNode.NestedDictionaries = ParseNDF(reader); // parse the nested dictionary
+                        AddBuffer(p_current_node, p_current_dict, pos, p_buffer); // merge the value or the key with the node
 
-						AddNode(ndf, ref currentDict, ref currentNode); // node end, so add the node
+                        p_reader.Read(); // consume
+                        pos = EParsingPosition.key;
 
-						pos = ParsingPosition.key;
+                        AddNode(p_ndf, ref p_current_dict, ref p_current_node); // node end, so add the node
 
-						break;
-					case (Int32)'}':
-						reader.Read(); // consume before stopping execution
-						if (currentDict.Count > 0) ndf.Add(currentDict); // nested dictionary end
-						return ndf;
-					case (Int32)'\r':
-					case (Int32)'\n':
-					case (Int32)'\t':
-					case (Int32)'\0':
-					case (Int32)' ':
-						if (pos == ParsingPosition.value)
-						{
-							buffer.Append((Char)reader.Read());
-						}
-						else
-						{
-							reader.Read(); // consume, ignored sign
-						}
-						break;
-					default:
-						buffer.Append((Char)reader.Read()); // add to buffer for key or value
-						break;
-				}
-			}
-			if (currentDict.Count > 0) ndf.Add(currentDict);
+                        break;
 
-			PostProcess(ndf);
+                    case (int)'{':
+                        int trail_length = 0;
+                        for (int i = p_buffer.Length - 1; i > -1; --i)
+                        {
+                            switch (p_buffer[i])
+                            {
+                                case '\r':
+                                case '\n':
+                                case '\t':
+                                case '\0':
+                                case ' ':
+                                    ++trail_length;
+                                    break;
 
-			return ndf;
-		}
+                                default:
+                                    goto loop_end;
+                            }
+                        }
+                        loop_end:
+                        if (trail_length > 0)
+                        {
+                            p_buffer.Remove(p_buffer.Length - trail_length, trail_length);
+                        }
+                        AddBuffer(p_current_node, p_current_dict, pos, p_buffer); // merge the value or the key with the node
 
-		private static void AddNode(List<NestedDictionary> ndf, ref NestedDictionary currentDict, ref NestedDictionaryNode currentNode)
-		{
-			if (currentNode.Key == null) return; // only occurs should the "node" be a reference
+                        p_reader.Read(); // consume before parsing the nested
+                        p_current_node.NestedDictionaries = ParseNDF(p_reader); // parse the nested dictionary
 
-			if (!currentDict.ContainsKey(currentNode.Key))
-			{
-				currentDict.Add(currentNode.Key, currentNode);
-			}
-			else
-			{
-				ndf.Add(currentDict);
-				currentDict = new NestedDictionary();
-				currentDict.Add(currentNode.Key, currentNode);
-			}
-			currentNode = new NestedDictionaryNode();
-		}
-		private static void AddBuffer(NestedDictionaryNode node, NestedDictionary currentDict, ParsingPosition pos, StringBuilder buffer)
-		{
-			switch (pos)
-			{
-				case ParsingPosition.key:
-					node.Key = buffer.ToString();
-					break;
-				case ParsingPosition.value:
-					node.Value = buffer.ToString();
-					break;
-			}
-			buffer = new StringBuilder();
-		}
+                        AddNode(p_ndf, ref p_current_dict, ref p_current_node); // node end, so add the node
 
-		private static void PostProcess(List<NestedDictionary> ndfData)
-		{
-			for (Int32 i = 0; i < ndfData.Count; ++i)
-			{
-				List<NestedDictionary> processedDicts = PostProcessSingle(ndfData[i]);
-				if (processedDicts.Count > 1)
-				{
-					ndfData.RemoveAt(i);
-					ndfData.InsertRange(i, processedDicts);
-					--i; // the dictionary currently at i has not yet been expanded since its a new one!
-				}
-			}
-		}
+                        pos = EParsingPosition.key;
 
-		private static List<NestedDictionary> PostProcessSingle(NestedDictionary ndfDict)
-		{
-			List<NestedDictionary> processedDicts = new List<NestedDictionary>();
-			List<String> removedKeys = new List<String>();
-			foreach (KeyValuePair<String, NestedDictionaryNode> ndfEntry in ndfDict)
-			{
-				PostProcess(ndfEntry.Value.NestedDictionaries);
+                        break;
 
-				if (ndfEntry.Key.StartsWith("@PP.Replace[") && ndfEntry.Key.EndsWith("]") && ndfEntry.Value.NestedDictionaries.Count > 0)
-				{
-					String innerKey = ndfEntry.Key.Substring("@PP.Replace[".Length, ndfEntry.Key.Length - "@PP.Replace[".Length - "]".Length);
-					String[] variableNames = innerKey.Split(',');
+                    case (int)'}':
+                        p_reader.Read(); // consume before stopping execution
+                        if (p_current_dict.Count > 0) p_ndf.Add(p_current_dict); // nested dictionary end
+                        return p_ndf;
 
-					foreach (NestedDictionary nestedDict in ndfEntry.Value)
-					{
-						NestedDictionary processedDict = ndfDict.Clone();
-						foreach (String varName in variableNames)
-						{
-							if (!nestedDict.ContainsKey(varName))
-							{
-								throw new Exception("Post-Processor Replace does not have all required variables defined. Missing " + varName);
-							}
-							ReplaceVariable(processedDict, varName, nestedDict[varName]);
-						}
-						processedDicts.Add(processedDict);
-					}
-					removedKeys.Add(ndfEntry.Key);
-					break;
-				}
+                    case (int)'\r':
+                    case (int)'\n':
+                    case (int)'\t':
+                    case (int)'\0':
+                    case (int)' ':
+                        if (pos == EParsingPosition.value)
+                        {
+                            p_buffer.Append((char)p_reader.Read());
+                        }
+                        else
+                        {
+                            p_reader.Read(); // consume, ignored sign
+                        }
+                        break;
 
-				String value = ndfEntry.Value.Value;
-				if (value == null || !value.StartsWith("@PP.Expand[") || !value.EndsWith("]")) continue;
+                    case (int)'\\':
+                        is_escaped = true;
+                        p_reader.Read();
+                        break;
 
-				String inner = value.Substring("@PP.Expand[".Length, value.Length - "@PP.Expand[".Length - "]".Length);
-				String[] expandedValues = inner.Split(',');
+                    default:
+                        p_buffer.Append((char)p_reader.Read()); // add to buffer for key or value
+                        break;
+                }
+            }
+            if (p_current_dict.Count > 0) p_ndf.Add(p_current_dict);
 
-				foreach (String expandedValue in expandedValues)
-				{
-					NestedDictionary processedDict = ndfDict.Clone();
-					processedDict[ndfEntry.Key].Value = expandedValue;
-					processedDicts.Add(processedDict);
-				}
-				break;
-			}
+            PostProcess(p_ndf);
 
-			foreach (String removedKey in removedKeys)
-			{
-				foreach (NestedDictionary nestedDict in processedDicts)
-				{
-					nestedDict.Remove(removedKey);
-				}
-			}
+            return p_ndf;
+        }
 
-			return processedDicts;
-		}
+        private static void AddNode(List<NestedDictionary> p_ndf, ref NestedDictionary p_current_dict, ref NestedDictionaryNode p_current_node)
+        {
+            string p_node_key = p_current_node.Key;
+            if (p_node_key == null) return; // only occurs should the "node" be a reference
 
-		private static void ReplaceVariable(NestedDictionary dictionary, String variableName, String substitute)
-		{
-			foreach(KeyValuePair<String, NestedDictionaryNode> ndfEntry in dictionary)
-			{
-				if(ndfEntry.Value.Value != null)
-				{
-					ndfEntry.Value.Value = ndfEntry.Value.Value.Replace(variableName, substitute);
-				}
+            if (!p_current_dict.ContainsKey(p_node_key))
+            {
+                p_current_dict.Add(p_node_key, p_current_node);
+            }
+            else
+            {
+                p_ndf.Add(p_current_dict);
+                p_current_dict = new NestedDictionary();
+                p_current_dict.Add(p_node_key, p_current_node);
+            }
+            p_current_node = new NestedDictionaryNode();
+        }
 
-				foreach(NestedDictionary p_nested_dict in ndfEntry.Value)
-				{
-					ReplaceVariable(p_nested_dict, variableName, substitute);
-				}
-			}
-		}
-	}
+        private static void AddBuffer(NestedDictionaryNode p_node, NestedDictionary p_current_dict, EParsingPosition pos, StringBuilder p_buffer)
+        {
+            switch (pos)
+            {
+                case EParsingPosition.key:
+                    p_node.Key = p_buffer.ToString();
+                    break;
+
+                case EParsingPosition.value:
+                    p_node.Value = p_buffer.ToString();
+                    break;
+            }
+            p_buffer.Clear();
+        }
+
+        /*
+         * Semantic: @PP.Expand[value,value,...,value]
+         *
+         * Range:@PP.Expand[100,150];
+         * Damage:@PP.Expand[20,25];
+         *
+         * Converts to:
+         *
+         * @PP.Resolve[SomeThing,OtherThing]
+         * {
+         *  SomeThing:@PP.Expand[10,20];
+         *  OtherThing:@PP.Expand[30,50];
+         * }
+         * Range:30;
+         * Damage:20;
+         * Nested
+         * {
+         *  Value:SomeThing;
+         *  Other:OtherThing;
+         * }
+         *
+         * =>
+         *
+         * Range:30;
+         * Damage:20;
+         * Nested
+         * {
+         *  Value:SomeThing;
+         *  Other:OtherThing;
+         * }
+        */
+
+        private static void PostProcess(List<NestedDictionary> p_ndf_data)
+        {
+            for (int i = 0; i < p_ndf_data.Count; ++i)
+            {
+                List<NestedDictionary> p_processed_dictionaries = PostProcessSingle(p_ndf_data[i]);
+                if (p_processed_dictionaries.Count > 0)
+                {
+                    p_ndf_data.RemoveAt(i);
+                    p_ndf_data.InsertRange(i, p_processed_dictionaries);
+                    --i; // the dictionary currently at i has not yet been expanded since its a new one!
+                }
+            }
+        }
+
+        private static List<NestedDictionary> PostProcessSingle(NestedDictionary p_ndf_dict)
+        {
+            List<NestedDictionary> p_processed_dictionaries = new List<NestedDictionary>();
+            List<string> p_removed_keys = new List<string>();
+            foreach (KeyValuePair<string, NestedDictionaryNode> ndf_entry in p_ndf_dict)
+            {
+                PostProcess(ndf_entry.Value.NestedDictionaries);
+
+                if (ndf_entry.Key.StartsWith("@PP.Replace[") && ndf_entry.Key.EndsWith("]") && ndf_entry.Value.NestedDictionaries.Count > 0)
+                {
+                    string p_inner_key = ndf_entry.Key.Substring("@PP.Replace[".Length, ndf_entry.Key.Length - "@PP.Replace[".Length - "]".Length);
+                    string[] p_variable_names = p_inner_key.Split(',').OrderByDescending(key => key.Length).ToArray();
+
+                    foreach (NestedDictionary p_nested_dict in ndf_entry.Value)
+                    {
+                        NestedDictionary p_processed_dict = p_ndf_dict.Clone();
+                        foreach (string p_var_name in p_variable_names)
+                        {
+                            if (!p_nested_dict.ContainsKey(p_var_name))
+                            {
+                                throw new Exception("Post-Processor Replace does not have all required variables defined. Missing " + p_var_name);
+                            }
+                            ReplaceVariable(p_processed_dict, p_var_name, p_nested_dict[p_var_name]);
+                        }
+                        p_processed_dictionaries.Add(p_processed_dict);
+                    }
+                    p_removed_keys.Add(ndf_entry.Key);
+                    break;
+                }
+
+                string p_value = ndf_entry.Value.Value;
+                if (p_value == null || !p_value.StartsWith("@PP.Expand[") || !p_value.EndsWith("]")) continue;
+
+                string p_inner = p_value.Substring("@PP.Expand[".Length, p_value.Length - "@PP.Expand[".Length - "]".Length);
+                string[] p_expanded_values = p_inner.Split(',');
+
+                foreach (string p_expanded_value in p_expanded_values)
+                {
+                    NestedDictionary p_processed_dict = p_ndf_dict.Clone();
+                    p_processed_dict[ndf_entry.Key].Value = p_expanded_value;
+                    p_processed_dictionaries.Add(p_processed_dict);
+                }
+                break;
+            }
+
+            foreach (string p_removed_key in p_removed_keys)
+            {
+                foreach (NestedDictionary p_nested_dict in p_processed_dictionaries)
+                {
+                    p_nested_dict.Remove(p_removed_key);
+                }
+            }
+
+            return p_processed_dictionaries;
+        }
+
+        private static void ReplaceVariable(NestedDictionary p_dictionary, string p_variable_name, string p_substitute)
+        {
+            foreach (KeyValuePair<string, NestedDictionaryNode> ndf_entry in p_dictionary)
+            {
+                if (ndf_entry.Value.Value != null)
+                {
+                    ndf_entry.Value.Value = ndf_entry.Value.Value.Replace(p_variable_name, p_substitute);
+                }
+
+                foreach (NestedDictionary p_nested_dict in ndf_entry.Value)
+                {
+                    ReplaceVariable(p_nested_dict, p_variable_name, p_substitute);
+                }
+            }
+        }
+    }
 }
